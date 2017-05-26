@@ -1,8 +1,18 @@
 {
   "name": "lambda-updater",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A CLI tool to update one or more Lambda functions from a CloudFormation template.",
-  "keywords": ["aws", "lambda", "function", "cli", "updater", "lambda-updater", "amazon web services", "cloudformation", "template"],
+  "keywords": [
+    "aws",
+    "lambda",
+    "function",
+    "cli",
+    "updater",
+    "lambda-updater",
+    "amazon web services",
+    "cloudformation",
+    "template"
+  ],
   "bin": {
     "lambda-updater": "./index.js"
   },
