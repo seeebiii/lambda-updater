@@ -4,6 +4,13 @@ A small CLI tool to update one or more [AWS Lambda](https://aws.amazon.com/lambd
 This is useful if you have a huge CloudFormation stack, but don't want to re-deploy the whole stack
 just because you've added one line in a Lambda function. Use this to quickly upload a new version of your code.
 
+### Notes
+- Before you use *lambda-updater*, make sure that your
+[AWS CLI is installed and configured](http://docs.aws.amazon.com/cli/latest/userguide/installing.html).
+- Before you use *lambda-updater*, make sure that your CloudFormation stack exists, i.e. you've successfully
+deployed it at least once.
+
+
 ## Install
 
 ### npm
@@ -19,8 +26,6 @@ yarn global lambda-updater
 
 ## Usage
 
-Before you use *lambda-updater*, make sure that your CloudFormation stack exists.
-
 After that, just use the following command and all Java or NodeJS functions from your CloudFormation template
 get updated:
 
@@ -32,7 +37,7 @@ lambda-updater --cfn path --stack stack-name --target jsOrJarFile [--functionNam
 
 **--stack** the stack name for your CloudFormation template
 
-**--target** a JS or JAR file containing your function code; just the functions matching the target type will be
+**--target** a JS or JAR file containing all your function code; just the functions matching the target type will be
 updated (might be useful if you're using Java and NodeJS functions in one project)
 
 **--functionName** optional: if you just want to update one single function, provide the logical function name

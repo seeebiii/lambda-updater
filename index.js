@@ -45,7 +45,7 @@ if (!path.isAbsolute(zipFileLocation)) {
     return;
 }
 
-spinner.succeed('Zipped files.');
+spinner.succeed('Zipped file.');
 
 
 ///// 2. Get physical function names.
@@ -53,7 +53,7 @@ spinner.succeed('Zipped files.');
 // if no function name is provided: use all valid functions which match target type
 // otherwise use provided function name and find physical name
 
-spinner = ora('Collecting functions to update...').start();
+spinner = ora('Collecting function(s) to update...').start();
 
 let promises = [];
 
@@ -77,13 +77,13 @@ try {
     }
 
 } catch (e) {
-    spinner.fail('Something failed when collecting functions to update.');
+    spinner.fail('Something failed when collecting function(s) to update.');
     console.log('Error: ', e);
     return;
 }
 
 if (promises.length === 0) {
-    spinner.fail('No functions found for an update.');
+    spinner.fail('No function(s) found for an update.');
     return;
 }
 
@@ -106,7 +106,7 @@ Promise.all(promises).then(data => {
     spinner.succeed(`Updated function(s):  ${updatedFunctions}`);
 }).catch(err => {
     spinner.fail('Error happened while updating function(s).');
-    console.log('', e);
+    console.log('', err);
 });
 
 
@@ -118,14 +118,16 @@ function getCmdPromise(cmd, resolveObj) {
         exec(cmd, function (err, stdout, stderr) {
             if (err) {
                 reject(`Error while executing command: "${cmd}"`);
-            } else if (!resolveObj) {
+            } else if (!resolveObj && stdout) {
                 if (stdout.indexOf('\n') > -1) {
                     resolve(stdout.substring(0, stdout.indexOf('\n')));
                 } else {
                     resolve(stdout);
                 }
-            } else {
+            } else if(resolveObj) {
                 resolve(resolveObj);
+            } else {
+                resolve();
             }
         });
     });
