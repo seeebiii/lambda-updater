@@ -71,7 +71,9 @@ try {
     for (let i = 0; i < tmpFunctions.length; i++) {
         const func = tmpFunctions[i];
 
-        if (doc['Resources'][func].Properties.Runtime.indexOf(targetType) > -1) {
+        // consider that also 'normal' resources are defined in a CF file, so check that properties exist!
+        let properties = doc['Resources'][func].Properties;
+        if (properties && properties.Runtime && properties.Runtime.indexOf(targetType) > -1) {
             const cmd = `aws cloudformation describe-stack-resources --stack-name ${stack} --logical-resource-id ${func} --query "StackResources[].PhysicalResourceId" --output text`;
             promises.push(getCmdPromise(cmd));
         }
