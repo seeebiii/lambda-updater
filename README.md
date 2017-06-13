@@ -21,7 +21,7 @@ npm install -g lambda-updater
 ### yarn
 
 ```
-yarn global lambda-updater
+yarn global add lambda-updater
 ```
 
 ## Usage
