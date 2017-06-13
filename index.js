@@ -4,6 +4,7 @@ const opts = require('minimist')(process.argv.slice(2));
 const ora = require('ora');
 const zip = require('adm-zip')();
 const yaml = require('js-yaml');
+const cfnYamlSchema = require('cloudformation-js-yaml-schema');
 
 const fs = require('fs');
 const exec = require('child_process').exec;
@@ -58,7 +59,7 @@ spinner = ora('Collecting function(s) to update...').start();
 let promises = [];
 
 try {
-    const doc = yaml.safeLoad(fs.readFileSync(cfn, 'utf8'));
+    const doc = yaml.safeLoad(fs.readFileSync(cfn, 'utf8'), { schema: cfnYamlSchema.CLOUDFORMATION_SCHEMA });
     let tmpFunctions = [];
 
     if (!funcName) {
@@ -117,7 +118,7 @@ function getCmdPromise(cmd, resolveObj) {
     return new Promise((resolve, reject) => {
         exec(cmd, function (err, stdout, stderr) {
             if (err) {
-                reject(`Error while executing command: "${cmd}"`);
+                reject(`Error while executing command: "${cmd}": ${err}`);
             } else if (!resolveObj && stdout) {
                 if (stdout.indexOf('\n') > -1) {
                     resolve(stdout.substring(0, stdout.indexOf('\n')));

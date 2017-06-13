@@ -28,6 +28,7 @@
   "license": "MIT",
   "dependencies": {
     "adm-zip": "^0.4.7",
+    "cloudformation-js-yaml-schema": "^0.3.1",
     "js-yaml": "^3.8.4",
     "minimist": "^1.2.0",
     "ora": "^1.2.0"
