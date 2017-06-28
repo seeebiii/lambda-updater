@@ -14,9 +14,12 @@ const cfn = opts.cfn;
 const stack = opts.stack;
 const target = opts.target;
 const funcName = opts.functionName;
+const debug = opts.debug;
+
+_debug('Using options: ', { cfn, stack, target, funcName, debug });
 
 if (!cfn || !stack || !target) {
-    console.log('Usage: lambda-updater --cfn path --stack stack-name --target fileOrJar [--functionName name]');
+    console.log('Usage: lambda-updater --cfn path --stack stack-name --target jsFileOrJar [--functionName name] [--debug]');
     return;
 }
 
@@ -41,6 +44,9 @@ if (target.indexOf('.jar') > -1) {
     zip.writeZip(zipFileLocation);
 }
 
+_debug('Zip file location: ', zipFileLocation);
+_debug('Target type: ', targetType);
+
 if (!path.isAbsolute(zipFileLocation)) {
     spinner.fail('Path to zip file is relative, but we need an absolute path. Path: ', zipFileLocation);
     return;
@@ -60,13 +66,7 @@ let promises = [];
 
 try {
     const doc = yaml.safeLoad(fs.readFileSync(cfn, 'utf8'), { schema: cfnYamlSchema.CLOUDFORMATION_SCHEMA });
-    let tmpFunctions = [];
-
-    if (!funcName) {
-        tmpFunctions = Object.keys(doc['Resources']);
-    } else {
-        tmpFunctions = [funcName];
-    }
+    const tmpFunctions = _getPotentialFunctionNames(doc, funcName);
 
     for (let i = 0; i < tmpFunctions.length; i++) {
         const func = tmpFunctions[i];
@@ -75,7 +75,7 @@ try {
         let properties = doc['Resources'][func].Properties;
         if (properties && properties.Runtime && properties.Runtime.indexOf(targetType) > -1) {
             const cmd = `aws cloudformation describe-stack-resources --stack-name ${stack} --logical-resource-id ${func} --query "StackResources[].PhysicalResourceId" --output text`;
-            promises.push(getCmdPromise(cmd));
+            promises.push(_getCmdPromise(cmd));
         }
     }
 
@@ -94,34 +94,38 @@ if (promises.length === 0) {
 ///// 3. Update function code for each function
 
 Promise.all(promises).then(data => {
-    spinner.succeed(`Found ${promises.length} function(s) to update.`);
-    spinner = ora(`Updating ${data.length} function(s)...`).start();
+    _debug('Collected function names: ', data);
+
+    spinner.succeed(`Found ${data.length} potential function(s) to update.`);
+    spinner = ora(`Updating function(s)...`).start();
 
     let updates = [];
 
     for (let i = 0; i < data.length; i++) {
         let functionName = data[i];
         if (functionName) {
-            const cmd = `aws lambda update-function-code --function-name ${data[i]} --zip-file fileb://${zipFileLocation}`;
-            updates.push(getCmdPromise(cmd, data[i]));
+            const cmd = `aws lambda update-function-code --function-name ${functionName} --zip-file fileb://${zipFileLocation}`;
+            updates.push(_getCmdPromise(cmd, functionName));
+        } else {
+            _debug('Ignoring function name, because it is undefined.');
         }
     }
 
     return Promise.all(updates);
 }).then(updatedFunctions => {
-    spinner.succeed(`Updated function(s):  ${updatedFunctions}`);
+    spinner.succeed(`Updated ${updatedFunctions.length} function(s):  ${updatedFunctions}`);
 }).catch(err => {
     spinner.fail('Error happened while updating function(s).');
     console.log('', err);
 });
 
 
-
 ///// === HELPER === /////
 
-function getCmdPromise(cmd, resolveObj) {
+function _getCmdPromise(cmd, resolveObj) {
+    _debug('Executing command: ', cmd);
     return new Promise((resolve, reject) => {
-        exec(cmd, function (err, stdout, stderr) {
+        exec(cmd, function(err, stdout, stderr) {
             if (err) {
                 reject(`Error while executing command: "${cmd}": ${err}`);
             } else if (!resolveObj && stdout) {
@@ -130,11 +134,30 @@ function getCmdPromise(cmd, resolveObj) {
                 } else {
                     resolve(stdout);
                 }
-            } else if(resolveObj) {
+            } else if (resolveObj) {
                 resolve(resolveObj);
             } else {
                 resolve();
             }
         });
     });
+}
+
+
+function _getPotentialFunctionNames(doc, funcName) {
+    let tmpFunctions = [];
+    if (!funcName) {
+        tmpFunctions = Object.keys(doc['Resources']);
+    } else {
+        tmpFunctions = [funcName];
+    }
+    _debug('Found potential resources in YAML file: ', tmpFunctions);
+    return tmpFunctions;
+}
+
+
+function _debug(message, object) {
+    if (debug) {
+        console.log("[Debug] " + (message ? message : ''), JSON.stringify(object));
+    }
 }
