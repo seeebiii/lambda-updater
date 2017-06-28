@@ -30,7 +30,7 @@ After that, just use the following command and all Java or NodeJS functions from
 get updated:
 
 ```
-lambda-updater --cfn path --stack stack-name --target jsOrJarFile [--functionName name]
+lambda-updater --cfn path --stack stack-name --target jsOrJarFile [--functionName name] [--debug]
 ```
 
 **--cfn** the relative path to your CloudFormation template
@@ -41,6 +41,8 @@ lambda-updater --cfn path --stack stack-name --target jsOrJarFile [--functionNam
 updated (might be useful if you're using Java and NodeJS functions in one project)
 
 **--functionName** optional: if you just want to update one single function, provide the logical function name
+
+**--debug** optional: prints out some further debug logs.
 
 ### Note
 The logical function name is what you define in your CloudFormation template. Example:
@@ -53,6 +55,9 @@ Resources:
     Properties:
       # ...
 ```
+
+If you have a function defined in your template which hasn't been deployed yet, it will be ignored and of course not updated.
+In this case there might be a different amount of functions in the logs which have been found and which actually have been updated.
 
 
 ## Author
