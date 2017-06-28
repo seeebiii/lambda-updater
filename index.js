@@ -100,8 +100,11 @@ Promise.all(promises).then(data => {
     let updates = [];
 
     for (let i = 0; i < data.length; i++) {
-        const cmd = `aws lambda update-function-code --function-name ${data[i]} --zip-file fileb://${zipFileLocation}`;
-        updates.push(getCmdPromise(cmd, data[i]));
+        let functionName = data[i];
+        if (functionName) {
+            const cmd = `aws lambda update-function-code --function-name ${data[i]} --zip-file fileb://${zipFileLocation}`;
+            updates.push(getCmdPromise(cmd, data[i]));
+        }
     }
 
     return Promise.all(updates);
