@@ -2,122 +2,177 @@
 
 const opts = require('minimist')(process.argv.slice(2));
 const ora = require('ora');
-const zip = require('adm-zip')();
 const yaml = require('js-yaml');
 const cfnYamlSchema = require('cloudformation-js-yaml-schema');
-
 const fs = require('fs');
 const exec = require('child_process').exec;
 const path = require('path');
+const archiver = require('archiver');
+const context = {};
 
-const cfn = opts.cfn;
-const stack = opts.stack;
-const target = opts.target;
-const funcName = opts.functionName;
-const debug = opts.debug;
-
-_debug('Using options: ', { cfn, stack, target, funcName, debug });
-
-if (!cfn || !stack || !target) {
-    console.log('Usage: lambda-updater --cfn path --stack stack-name --target jsFileOrJar [--functionName name] [--debug]');
-    return;
-}
-
-let spinner = ora('Zipping files...').start();
+let spinner = null;
 
 
-///// 1. Zip file if necessary
-
-let targetType = '';
-let zipFileLocation = '';
-if (target.indexOf('.jar') > -1) {
-    targetType = 'java';
-    zipFileLocation = target;
-    if (!path.isAbsolute(zipFileLocation)) {
-        zipFileLocation = path.resolve('.') + '/' + zipFileLocation;
-    }
-    // we don't need to zip the code, because a jar file is already a zip
-} else if (target.indexOf('.js') > -1) {
-    targetType = 'node';
-    zipFileLocation = __dirname + '/target.zip';
-    zip.addLocalFile(target);
-    zip.writeZip(zipFileLocation);
-}
-
-_debug('Zip file location: ', zipFileLocation);
-_debug('Target type: ', targetType);
-
-if (!path.isAbsolute(zipFileLocation)) {
-    spinner.fail('Path to zip file is relative, but we need an absolute path. Path: ', zipFileLocation);
-    return;
-}
-
-spinner.succeed('Zipped file.');
-
-
-///// 2. Get physical function names.
-
-// if no function name is provided: use all valid functions which match target type
-// otherwise use provided function name and find physical name
-
-spinner = ora('Collecting function(s) to update...').start();
-
-let promises = [];
-
-try {
-    const doc = yaml.safeLoad(fs.readFileSync(cfn, 'utf8'), { schema: cfnYamlSchema.CLOUDFORMATION_SCHEMA });
-    const tmpFunctions = _getPotentialFunctionNames(doc, funcName);
-
-    for (let i = 0; i < tmpFunctions.length; i++) {
-        const func = tmpFunctions[i];
-
-        // consider that also 'normal' resources are defined in a CF file, so check that properties exist!
-        let properties = doc['Resources'][func].Properties;
-        if (properties && properties.Runtime && properties.Runtime.indexOf(targetType) > -1) {
-            const cmd = `aws cloudformation describe-stack-resources --stack-name ${stack} --logical-resource-id ${func} --query "StackResources[].PhysicalResourceId" --output text`;
-            promises.push(_getCmdPromise(cmd));
-        }
-    }
-
-} catch (e) {
-    spinner.fail('Something failed when collecting function(s) to update.');
-    console.log('Error: ', e);
-    return;
-}
-
-if (promises.length === 0) {
-    spinner.fail('No function(s) found for an update.');
-    return;
-}
-
-
-///// 3. Update function code for each function
-
-Promise.all(promises).then(data => {
-    _debug('Collected function names: ', data);
-
-    spinner.succeed(`Found ${data.length} potential function(s) to update.`);
-    spinner = ora(`Updating function(s)...`).start();
-
-    let updates = [];
-
-    for (let i = 0; i < data.length; i++) {
-        let functionName = data[i];
-        if (functionName) {
-            const cmd = `aws lambda update-function-code --function-name ${functionName} --zip-file fileb://${zipFileLocation}`;
-            updates.push(_getCmdPromise(cmd, functionName));
+preparation(opts).then(archiveFile).then(getFunctionNames).then(updateFunctions).catch(err => {
+    try {
+        if (spinner !== null) {
+            console.log(err);
+            spinner.fail(err);
         } else {
-            _debug('Ignoring function name, because it is undefined.');
+            console.log(err);
         }
+    } catch (e) {
+        console.log(e);
+        console.log(err);
     }
-
-    return Promise.all(updates);
-}).then(updatedFunctions => {
-    spinner.succeed(`Updated ${updatedFunctions.length} function(s):  ${updatedFunctions}`);
-}).catch(err => {
-    spinner.fail('Error happened while updating function(s).');
-    console.log('', err);
 });
+
+
+function preparation(opts) {
+    return new Promise((resolve, reject) => {
+        const cfn = opts.cfn;
+        const stack = opts.stack;
+        const target = opts.target;
+        const funcName = opts.functionName;
+        const debug = opts.debug;
+
+        if (!cfn || !stack || !target) {
+            reject('Usage: lambda-updater --cfn path --stack stack-name --target jsFileOrJar [--functionName name] [--debug]');
+        } else {
+            context.opts = {
+                cfn,
+                stack,
+                target,
+                funcName,
+                debug
+            };
+            _debug('Using options: ', context.opts);
+            resolve(context);
+        }
+    });
+}
+
+
+function archiveFile(context) {
+    return new Promise((resolve, reject) => {
+        spinner = ora('Zipping files...').start();
+
+        const output = fs.createWriteStream(__dirname + '/target.zip');
+        const archive = archiver('zip', {
+            zlib: { level: 9 } // Sets the compression level.
+        });
+        archive.pipe(output);
+        output.on('close', () => {
+            spinner.succeed('Zipped file.');
+            _debug('Total bytes for zip file: ', archive.pointer());
+            resolve(context);
+        });
+        archive.on('error', err => {
+            reject(err);
+        });
+
+        let targetType = '';
+        let zipFileLocation = '';
+        let target = context.opts.target;
+
+        if (target.indexOf('.jar') > -1) {
+            targetType = 'java';
+            zipFileLocation = target;
+            if (!path.isAbsolute(zipFileLocation)) {
+                zipFileLocation = path.resolve('.') + '/' + zipFileLocation;
+            }
+            // we don't need to zip the code, because a jar file is already a zip
+        } else if (target.indexOf('.js') > -1) {
+            targetType = 'node';
+            zipFileLocation = __dirname + '/target.zip';
+            const fileName = target.substring(target.lastIndexOf('/'));
+            archive.file(target, { name: fileName });
+        } else {
+            reject('Unsupported file type. Only .js and .jar are supported at the moment.');
+        }
+
+        _debug('Zip file location: ', zipFileLocation);
+        _debug('Target type: ', targetType);
+
+        if (!path.isAbsolute(zipFileLocation)) {
+            spinner.fail('Path to zip file is relative, but we need an absolute path. Path: ', zipFileLocation);
+            return;
+        }
+
+        context.archive = {
+            targetType: targetType,
+            zipFileLocation: zipFileLocation
+        };
+
+        archive.finalize();
+    });
+}
+
+
+function getFunctionNames(context) {
+    return new Promise((resolve, reject) => {
+        // if no function name is provided: use all valid functions which match target type
+        // otherwise use provided function name and find physical name
+
+        spinner = ora('Collecting function(s) to update...').start();
+
+        try {
+            let promises = [];
+            const doc = yaml.safeLoad(fs.readFileSync(context.opts.cfn, 'utf8'), { schema: cfnYamlSchema.CLOUDFORMATION_SCHEMA });
+            const tmpFunctions = _getPotentialFunctionNames(doc, context.opts.funcName);
+
+            for (let i = 0; i < tmpFunctions.length; i++) {
+                const func = tmpFunctions[i];
+
+                // consider that also 'normal' resources are defined in a CF file, so check that properties exist!
+                let properties = doc['Resources'][func].Properties;
+                if (properties && properties.Runtime && properties.Runtime.indexOf(context.archive.targetType) > -1) {
+                    const cmd = `aws cloudformation describe-stack-resources --stack-name ${context.opts.stack} --logical-resource-id ${func} --query "StackResources[].PhysicalResourceId" --output text`;
+                    promises.push(_getCmdPromise(cmd));
+                }
+            }
+
+            if (promises.length === 0) {
+                reject('No function(s) found for an update.');
+            } else {
+                Promise.all(promises).then(data => {
+                    spinner.succeed(`Found ${data.length} potential function(s) to update.`);
+                    context.functions = data;
+                    resolve(context);
+                }).catch(reject);
+            }
+        } catch (e) {
+            spinner.fail('Something failed when collecting function(s) to update.');
+            reject('Error: ', e);
+        }
+    });
+}
+
+
+function updateFunctions(context) {
+    return new Promise((resolve, reject) => {
+        let functions = context.functions;
+        _debug('Collected function names: ', functions);
+
+        spinner = ora(`Updating function(s)...`).start();
+
+        let updates = [];
+
+        for (let i = 0; i < functions.length; i++) {
+            let functionName = functions[i];
+            if (functionName) {
+                const cmd = `aws lambda update-function-code --function-name ${functionName} --zip-file fileb://${context.archive.zipFileLocation}`;
+                updates.push(_getCmdPromise(cmd, functionName));
+            } else {
+                _debug('Ignoring function name, because it is undefined.');
+            }
+        }
+
+        Promise.all(updates).then(updatedFunctions => {
+            spinner.succeed(`Updated ${updatedFunctions.length} function(s):  ${updatedFunctions}`);
+        }).catch(reject);
+    });
+}
 
 
 ///// === HELPER === /////
@@ -157,7 +212,7 @@ function _getPotentialFunctionNames(doc, funcName) {
 
 
 function _debug(message, object) {
-    if (debug) {
-        console.log("[Debug] " + (message ? message : ''), JSON.stringify(object));
+    if (context.opts.debug) {
+        console.log("[Debug] " + message, JSON.stringify(object));
     }
 }
