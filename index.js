@@ -35,6 +35,7 @@ function preparation(opts) {
         const target = opts.target;
         const funcName = opts.functionName;
         const debug = opts.debug;
+        const useS3 = opts.useS3;
 
         if (!cfn || !stack || !target) {
             reject('Usage: lambda-updater --cfn path --stack stack-name --target jsFileOrJar [--functionName name] [--debug]');
@@ -44,7 +45,8 @@ function preparation(opts) {
                 stack,
                 target,
                 funcName,
-                debug
+                debug,
+                useS3
             };
             _debug('Using options: ', context.opts);
             resolve(context);
@@ -89,22 +91,39 @@ function archiveFile(context) {
             archive.file(target, { name: fileName });
         } else {
             reject('Unsupported file type. Only .js and .jar are supported at the moment.');
-        }
-
-        _debug('Zip file location: ', zipFileLocation);
-        _debug('Target type: ', targetType);
-
-        if (!path.isAbsolute(zipFileLocation)) {
-            spinner.fail('Path to zip file is relative, but we need an absolute path. Path: ', zipFileLocation);
             return;
         }
 
-        context.archive = {
-            targetType: targetType,
-            zipFileLocation: zipFileLocation
-        };
+        _debug('Target type: ', targetType);
 
-        archive.finalize();
+        new Promise((res, rej) => {
+            if (context.opts.useS3) {
+                _debug('Uploading target to S3 first using bucket: ', context.opts.useS3);
+                // upload to S3 in order to avoid timeout issues for too large artifacts
+                let filename = zipFileLocation.substring(zipFileLocation.lastIndexOf('/') + 1);
+                let s3Uri = `s3://${context.opts.useS3}/_lambda-updater/${filename}`;
+                _getCmdPromise(`aws s3 cp ${zipFileLocation} ${s3Uri}`).then(() => {
+                    res(`_lambda-updater/${filename}`);
+                }).catch(rej);
+            } else {
+                _debug('Directly uploading function code...');
+                res(zipFileLocation);
+            }
+        }).then(zipFileLocation => {
+            _debug('Zip file location: ', zipFileLocation);
+
+            if (!path.isAbsolute(zipFileLocation) && !context.opts.useS3) {
+                spinner.fail('Path to zip file is relative, but we need an absolute path. Path: ', zipFileLocation);
+                return;
+            }
+
+            context.archive = {
+                targetType: targetType,
+                zipFileLocation: zipFileLocation
+            };
+
+            archive.finalize();
+        });
     });
 }
 
@@ -161,7 +180,12 @@ function updateFunctions(context) {
         for (let i = 0; i < functions.length; i++) {
             let functionName = functions[i];
             if (functionName) {
-                const cmd = `aws lambda update-function-code --function-name ${functionName} --zip-file fileb://${context.archive.zipFileLocation}`;
+                let cmd = '';
+                if (context.opts.useS3) {
+                    cmd = `aws lambda update-function-code --function-name ${functionName} --s3-bucket ${context.opts.useS3} --s3-key ${context.archive.zipFileLocation}`;
+                } else {
+                    cmd = `aws lambda update-function-code --function-name ${functionName} --zip-file fileb://${context.archive.zipFileLocation}`;
+                }
                 updates.push(_getCmdPromise(cmd, functionName));
             } else {
                 _debug('Ignoring function name, because it is undefined.');
@@ -213,6 +237,6 @@ function _getPotentialFunctionNames(doc, funcName) {
 
 function _debug(message, object) {
     if (context.opts.debug) {
-        console.log("[Debug] " + message, JSON.stringify(object));
+        console.log("[DEBUG] " + message, JSON.stringify(object));
     }
 }

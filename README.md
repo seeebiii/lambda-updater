@@ -30,7 +30,13 @@ After that, just use the following command and all Java or NodeJS functions from
 get updated:
 
 ```
-lambda-updater --cfn path --stack stack-name --target jsOrJarFile [--functionName name] [--debug]
+lambda-updater
+   --cfn path
+   --stack stack-name
+   --target jsOrJarFile
+   [--functionName name]
+   [--useS3 bucketName]
+   [--debug]
 ```
 
 **--cfn** the relative path to your CloudFormation template
@@ -41,6 +47,10 @@ lambda-updater --cfn path --stack stack-name --target jsOrJarFile [--functionNam
 updated (might be useful if you're using Java and NodeJS functions in one project)
 
 **--functionName** optional: if you just want to update one single function, provide the logical function name
+
+**--useS3** optional: pass a bucket name and your target file will be uploaded to S3 first. This is useful and faster
+if your target file is quite large for a Lambda function (> 10MB). Target file will be uploaded to [LAMBDA_BUCKET]/_lambda-updater/[FILENAME].
+Please consider [the limitations on this approach](http://docs.aws.amazon.com/cli/latest/reference/lambda/update-function-code.html).
 
 **--debug** optional: prints out some further debug logs.
 
