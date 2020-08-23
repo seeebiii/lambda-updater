@@ -1,14 +1,15 @@
 # lambda-updater
 A small CLI tool to update one or more [AWS Lambda](https://aws.amazon.com/lambda/) functions from a
-[AWS CloudFormation](https://aws.amazon.com/cloudformation/) template.
-This is useful if you have a huge CloudFormation stack, but don't want to re-deploy the whole stack
-just because you've added one line in a Lambda function. Use this to quickly upload a new version of your code.
+[AWS CloudFormation](https://aws.amazon.com/cloudformation/) template that share the same code artifact.
+
+This is useful if you have a huge CloudFormation stack with multiple Lambda functions using the same code artifact 
+but you don't want to re-deploy the whole stack just because you've added one line in a Lambda function.
+Use this to quickly upload a new version of your function's code.
 
 ### Notes
 - Before you use *lambda-updater*, make sure that your
 [AWS CLI is installed and configured](http://docs.aws.amazon.com/cli/latest/userguide/installing.html).
-- Before you use *lambda-updater*, make sure that your CloudFormation stack exists, i.e. you've successfully
-deployed it at least once.
+- Before you use *lambda-updater*, make sure that your CloudFormation stack exists, i.e. you've successfully deployed it at least once.
 
 
 ## Install
@@ -22,6 +23,17 @@ npm install -g lambda-updater
 
 ```
 yarn global add lambda-updater
+```
+
+## Example
+
+```
+lambda-updater \
+    --cfn cfn.yml \
+    --stack java-starter \
+    --target target/target.jar \
+    --functionName JavaExampleFunction \
+    --useS3 shesse-lambdas
 ```
 
 ## Usage
@@ -43,13 +55,14 @@ lambda-updater
 
 **--stack** the stack name for your CloudFormation template
 
-**--target** a JS or JAR file containing all your function code; just the functions matching the target type will be
+**--target** a path to the JS or JAR file containing all your function code; just the functions matching the target type will be
 updated (might be useful if you're using Java and NodeJS functions in one project)
 
-**--functionName** optional: if you just want to update one single function, provide the logical function name
+**--functionName** optional: if you just want to update one single function, provide the **logical** function name (= resource id in your CloudFormation template)
 
-**--useS3** optional: pass a bucket name and your target file will be uploaded to S3 first. This is useful and faster
-if your target file is quite large for a Lambda function (> 10MB). Target file will be uploaded to [LAMBDA_BUCKET]/_lambda-updater/[FILENAME].
+**--useS3** optional: pass a bucket name and your target file will be uploaded to S3 first.
+This is useful and faster if your artifact file is quite large for a Lambda function (> 10MB).
+Target file will be uploaded to [LAMBDA_BUCKET]/_lambda-updater/[FILENAME].
 Please consider [the limitations on this approach](http://docs.aws.amazon.com/cli/latest/reference/lambda/update-function-code.html).
 
 **--debug** optional: prints out some further debug logs.
