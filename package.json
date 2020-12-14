@@ -27,10 +27,10 @@
   },
   "license": "MIT",
   "dependencies": {
-    "archiver": "^5.0.0",
+    "archiver": "^5.1.0",
     "cloudformation-js-yaml-schema": "^0.4.2",
-    "js-yaml": "^3.14.0",
+    "js-yaml": "^3.14.1",
     "minimist": "^1.2.5",
-    "ora": "^5.0.0"
+    "ora": "^5.1.0"
   }
 }
